@@ -871,14 +871,34 @@ async function fetchTranslation(text){
   if(!text) return '';
   text = text.trim();
   if(text.length > 800) text = text.slice(0, 800);
+
+  // Prefer Claude's built-in translation when running as a Claude artifact.
   const sample = await getSample();
-  if(!sample) throw new Error('Translation is unavailable in this view');
-  const result = await sample(
-    'Translate the following English text to Turkish. Reply with ONLY the Turkish translation — no quotes, no notes, no English:\n\n' + text
-  );
-  const out = (result && result.text) ? result.text.trim() : '';
-  if(!out) throw new Error('No translation');
-  return out;
+  if(sample){
+    try{
+      const result = await sample(
+        'Translate the following English text to Turkish. Reply with ONLY the Turkish translation — no quotes, no notes, no English:\n\n' + text
+      );
+      const out = (result && result.text) ? result.text.trim() : '';
+      if(out) return out;
+    }catch(e){ /* fall through to the public APIs below */ }
+  }
+
+  // Fallback for plain web hosting (e.g. GitHub Pages) where window.claude isn't present.
+  try{
+    const res = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=en|tr');
+    if(!res.ok) throw new Error('MyMemory failed');
+    const data = await res.json();
+    const translated = data && data.responseData && data.responseData.translatedText;
+    if(!translated) throw new Error('No translation');
+    return translated;
+  }catch(e1){
+    const res2 = await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=tr&dt=t&q=' + encodeURIComponent(text));
+    const data2 = await res2.json();
+    const translated2 = data2 && data2[0] ? data2[0].map(seg=>seg[0]).join('') : null;
+    if(!translated2) throw new Error('No translation');
+    return translated2;
+  }
 }
 
 async function translateText(text, x, y){

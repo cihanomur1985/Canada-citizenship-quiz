@@ -468,6 +468,7 @@ nav.modes button.active{
     <div class="explanation" id="qExplanation"></div>
     <div class="nav-row">
       <button id="quitBtn">End test</button>
+      <button id="prevBtn" disabled style="white-space:nowrap">← Back</button>
       <button id="nextBtn" class="primary" disabled>Next</button>
     </div>
   </div>
@@ -576,6 +577,7 @@ let quizIndex = 0;
 let quizScore = 0;
 let quizAnswers = []; // {q, chosen, correct}
 let answeredCurrent = false;
+let qStates = []; // per-question: {order, chosen}
 let qTranslated = false;
 let qCache = null;
 
@@ -604,6 +606,7 @@ document.getElementById('startBtn').addEventListener('click', ()=>{
   quizIndex = 0;
   quizScore = 0;
   quizAnswers = [];
+  qStates = [];
   showPanel('quiz');
   renderQuestion();
 });
@@ -622,9 +625,14 @@ function renderQuestion(){
   optsWrap.innerHTML = '';
   document.getElementById('qExplanation').style.display = 'none';
   document.getElementById('nextBtn').disabled = true;
+  document.getElementById('prevBtn').disabled = (quizIndex === 0);
 
-  // shuffle options, track correct index
-  const order = shuffle(q.opts.map((text,i)=>({text,i})));
+  // shuffle options (reuse saved order when revisiting), track correct index
+  let st = qStates[quizIndex];
+  if(!st){
+    st = qStates[quizIndex] = { order: shuffle(q.opts.map((text,i)=>({text,i}))), chosen: null };
+  }
+  const order = st.order;
   order.forEach(opt=>{
     const b = document.createElement('button');
     b.className = 'opt';
@@ -638,6 +646,23 @@ function renderQuestion(){
   const translateWrap = document.getElementById('qTranslateWrap');
   translateWrap.innerHTML = '<button class="translate-toggle-btn" id="qTranslateBtn">🌐 Translate to Turkish</button>';
   document.getElementById('qTranslateBtn').addEventListener('click', onQuestionTranslateClick);
+
+  // revisiting an already-answered question: show it in review state
+  if(st.chosen !== null){
+    answeredCurrent = true;
+    const btns = [...optsWrap.children];
+    btns.forEach(b=>{
+      b.classList.add('disabled');
+      b.disabled = true;
+      const idx = parseInt(b.dataset.optIndex,10);
+      if(idx === q.a) b.classList.add('correct');
+      else if(idx === st.chosen) b.classList.add('wrong');
+    });
+    const exp = document.getElementById('qExplanation');
+    exp.textContent = q.exp;
+    exp.style.display = 'block';
+    document.getElementById('nextBtn').disabled = false;
+  }
 }
 
 async function onQuestionTranslateClick(){
@@ -685,6 +710,7 @@ async function onQuestionTranslateClick(){
 function selectOption(isCorrect, chosenIdx, q, btnEl, optsWrap){
   if(answeredCurrent) return;
   answeredCurrent = true;
+  if(qStates[quizIndex]) qStates[quizIndex].chosen = chosenIdx;
   if(isCorrect) quizScore++;
   [...optsWrap.children].forEach(b=>{
     b.classList.add('disabled');
@@ -707,6 +733,13 @@ document.getElementById('nextBtn').addEventListener('click', ()=>{
   if(quizIndex >= quizQuestions.length){
     finishQuiz();
   } else {
+    renderQuestion();
+  }
+});
+
+document.getElementById('prevBtn').addEventListener('click', ()=>{
+  if(quizIndex > 0){
+    quizIndex--;
     renderQuestion();
   }
 });
